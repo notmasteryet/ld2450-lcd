@@ -8,8 +8,8 @@
 #define BTN_DISP_GPIO   33    /* Display-control button                         */
 
 typedef enum {
-    BTN_ID_BOOT = 0,
-    BTN_ID_DISP,
+    BTN_ID_MODE = 0,   /* BOOT/GPIO0  — toggle front/back sensor mode */
+    BTN_ID_POWER,      /* GPIO33      — toggle display + sensor on/off */
     BTN_ID_COUNT,
 } btn_id_t;
 

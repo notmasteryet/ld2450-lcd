@@ -24,8 +24,8 @@ typedef struct {
 } btn_ctx_t;
 
 static btn_ctx_t s_buttons[BTN_ID_COUNT] = {
-    [BTN_ID_BOOT] = { .id = BTN_ID_BOOT, .gpio = BTN_BOOT_GPIO },
-    [BTN_ID_DISP] = { .id = BTN_ID_DISP, .gpio = BTN_DISP_GPIO },
+    [BTN_ID_MODE]  = { .id = BTN_ID_MODE,  .gpio = BTN_BOOT_GPIO },
+    [BTN_ID_POWER] = { .id = BTN_ID_POWER, .gpio = BTN_DISP_GPIO },
 };
 
 /* Called from the debounce timer (timer task context, not ISR).

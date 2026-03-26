@@ -16,14 +16,15 @@ static bool s_backlight_on = true;
 static void handle_button(const btn_evt_t *evt)
 {
     switch (evt->id) {
-    case BTN_ID_BOOT:
+    case BTN_ID_MODE:
         /* BOOT button — toggle front/back sensor mount mode */
         radar_ui_toggle_mode();
         break;
-    case BTN_ID_DISP:
-        /* Display button — toggle backlight */
+    case BTN_ID_POWER:
+        /* Display button — toggle backlight and sensor together */
         s_backlight_on = !s_backlight_on;
         display_backlight(s_backlight_on);
+        power_sensor(s_backlight_on);
         break;
     default:
         break;

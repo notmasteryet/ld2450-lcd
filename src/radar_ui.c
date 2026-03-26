@@ -24,9 +24,9 @@
  */
 
 #define SENSOR_X     (LCD_H_RES / 2)   /* 160 px */
-#define MM_PER_PX    33     /* 8000 mm / 240 px ≈ 33 — shows full 8 m range */
+#define MM_PER_PX    25     /* 6000 mm / 240 px = 25 — shows full 6 m range */
 #define RING_STEP_MM 2000
-#define RING_COUNT   4      /* rings at 2 / 4 / 6 / 8 m */
+#define RING_COUNT   3      /* rings at 2 / 4 / 6 m */
 #define DOT_DIAM     10
 #define FOV_SPREAD_PX 139   /* tan(30°) × 240 */
 
