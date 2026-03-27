@@ -9,29 +9,35 @@
  * -----------------------
  * MODE_FRONT — sensor faces forward, mounted facing the user:
  *   Origin at top-centre. Targets spread downward.
- *   screen_x = SENSOR_X + x / MM_PER_PX
- *   screen_y = 0        + y / MM_PER_PX
+ *   screen_x = SENSOR_X + x / mm_per_px
+ *   screen_y = 0        + y / mm_per_px
  *   X mirrors user movement (move right → dot goes right).
  *
  * MODE_BACK — sensor faces backward, mounted on user's back:
  *   Origin at bottom-centre. Targets spread upward.
- *   screen_x = SENSOR_X - x / MM_PER_PX   (X flipped: real-right = screen-right)
- *   screen_y = LCD_V_RES - y / MM_PER_PX
+ *   screen_x = SENSOR_X - x / mm_per_px   (X flipped: real-right = screen-right)
+ *   screen_y = LCD_V_RES - y / mm_per_px
  *
- * Scale: MM_PER_PX = 40 → rings at 2 m / 4 m / 6 m (50 / 100 / 150 px)
+ * Scale 6 m: mm_per_px = 25, rings at 2 / 4 / 6 m (80 / 160 / 240 px)
+ * Scale 3 m: mm_per_px = 12, rings at 1 / 2 / 3 m (83 / 166 / 250 px)
  * FOV:   LD2450 60° horizontal (±30°).
  *        spread = tan(30°) × LCD_V_RES = 0.5774 × 240 ≈ 139 px
  */
 
-#define SENSOR_X     (LCD_H_RES / 2)   /* 160 px */
-#define MM_PER_PX    25     /* 6000 mm / 240 px = 25 — shows full 6 m range */
-#define RING_STEP_MM 2000
-#define RING_COUNT   3      /* rings at 2 / 4 / 6 m */
-#define DOT_DIAM     10
+#define SENSOR_X      (LCD_H_RES / 2)   /* 160 px */
+#define RING_COUNT    3
+#define DOT_DIAM      10
 #define FOV_SPREAD_PX 139   /* tan(30°) × 240 */
 
 typedef enum { MODE_FRONT = 0, MODE_BACK = 1 } sensor_mode_t;
-static sensor_mode_t s_mode = MODE_FRONT;
+typedef enum { SCALE_6M  = 0, SCALE_3M  = 1 } scale_t;
+
+static sensor_mode_t s_mode  = MODE_FRONT;
+static scale_t       s_scale = SCALE_6M;
+
+/* Scale-dependent parameters */
+static int s_mm_per_px   = 25;
+static int s_ring_step   = 2000;
 
 static const lv_color_t TARGET_COLORS[LD2450_MAX_TARGETS] = {
     LV_COLOR_MAKE(0xFF, 0x40, 0x40),
@@ -109,7 +115,7 @@ static void rebuild(void)
 
     /* Distance rings centred on origin */
     for (int i = 1; i <= RING_COUNT; i++) {
-        int r = (i * RING_STEP_MM) / MM_PER_PX;   /* 50, 100, 150 px */
+        int r = (i * s_ring_step) / s_mm_per_px;
         make_ring(scr, SENSOR_X, origin_y, r, ring_color);
     }
 
@@ -129,8 +135,8 @@ static void rebuild(void)
 
     /* Distance labels along the centre axis */
     for (int i = 1; i <= RING_COUNT; i++) {
-        int dist_mm  = i * RING_STEP_MM;
-        int radius   = dist_mm / MM_PER_PX;
+        int dist_mm  = i * s_ring_step;
+        int radius   = dist_mm / s_mm_per_px;
         int label_y  = origin_y + y_dir * radius;
         if (label_y < 2 || label_y >= LCD_V_RES - 10) continue;
 
@@ -143,12 +149,16 @@ static void rebuild(void)
         lv_obj_set_pos(lbl, SENSOR_X + 3, label_y - 10);
     }
 
-    /* Mode indicator (top-right corner) */
+    /* Mode + scale indicator (top-right corner) */
     lv_obj_t *mode_lbl = lv_label_create(scr);
-    lv_label_set_text(mode_lbl, (s_mode == MODE_FRONT) ? "FWD" : "BWD");
+    char mode_buf[12];
+    snprintf(mode_buf, sizeof(mode_buf), "%s %dm",
+             (s_mode == MODE_FRONT) ? "FWD" : "BWD",
+             (s_scale == SCALE_6M)  ? 6     : 3);
+    lv_label_set_text(mode_lbl, mode_buf);
     lv_obj_set_style_text_color(mode_lbl, label_color, 0);
     lv_obj_set_style_bg_opa(mode_lbl, LV_OPA_TRANSP, 0);
-    lv_obj_set_pos(mode_lbl, LCD_H_RES - 28, 2);
+    lv_obj_set_pos(mode_lbl, LCD_H_RES - 52, 2);
 
     /* Target dots — on top */
     for (int i = 0; i < LD2450_MAX_TARGETS; i++) {
@@ -173,9 +183,25 @@ void radar_ui_init(void)
     rebuild();
 }
 
-void radar_ui_toggle_mode(void)
+void radar_ui_set_mode(bool back)
 {
-    s_mode = (s_mode == MODE_FRONT) ? MODE_BACK : MODE_FRONT;
+    sensor_mode_t wanted = back ? MODE_BACK : MODE_FRONT;
+    if (wanted == s_mode) return;
+    s_mode = wanted;
+    rebuild();
+}
+
+void radar_ui_toggle_scale(void)
+{
+    if (s_scale == SCALE_6M) {
+        s_scale      = SCALE_3M;
+        s_mm_per_px  = 12;
+        s_ring_step  = 1000;
+    } else {
+        s_scale      = SCALE_6M;
+        s_mm_per_px  = 25;
+        s_ring_step  = 2000;
+    }
     rebuild();
 }
 
@@ -194,8 +220,8 @@ void radar_ui_update(const ld2450_frame_t *frame)
             continue;
         }
 
-        int sx = SENSOR_X + x_sign * (t->x / MM_PER_PX);
-        int sy = origin_y + y_sign * (t->y / MM_PER_PX);
+        int sx = SENSOR_X + x_sign * (t->x / s_mm_per_px);
+        int sy = origin_y + y_sign * (t->y / s_mm_per_px);
 
         if (sx >= 0 && sx < LCD_H_RES && sy >= 0 && sy < LCD_V_RES) {
             lv_obj_set_pos(s_dot[i], sx - DOT_DIAM / 2, sy - DOT_DIAM / 2);

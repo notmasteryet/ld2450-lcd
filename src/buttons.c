@@ -55,6 +55,16 @@ void buttons_init(void)
 {
     s_evt_queue = xQueueCreate(8, sizeof(btn_evt_t));
 
+    /* Reed switch — input only, no ISR */
+    gpio_config_t sw_cfg = {
+        .pin_bit_mask = 1ULL << SW_BACK_GPIO,
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&sw_cfg);
+
     gpio_install_isr_service(0);
 
     for (int i = 0; i < BTN_ID_COUNT; i++) {
@@ -88,4 +98,9 @@ void buttons_init(void)
 bool buttons_get_event(btn_evt_t *evt)
 {
     return xQueueReceive(s_evt_queue, evt, 0) == pdTRUE;
+}
+
+bool buttons_sw_back(void)
+{
+    return gpio_get_level(SW_BACK_GPIO) == 0;  /* active-LOW */
 }
