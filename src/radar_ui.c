@@ -26,7 +26,10 @@
 
 #define SENSOR_X      (LCD_H_RES / 2)   /* 160 px */
 #define RING_COUNT    3
-#define DOT_DIAM      10
+#define DOT_DIAM_BASE   15   /* stationary: 150% of original 10 px  */
+#define DOT_DIAM_TOWARD 30   /* approaching at max speed: 300%       */
+#define DOT_DIAM_AWAY    5   /* receding at max speed:     50%       */
+#define DOT_SPEED_MAX  150   /* cm/s at which size is fully scaled   */
 #define FOV_SPREAD_PX 139   /* tan(30°) × 240 */
 
 typedef enum { MODE_FRONT = 0, MODE_BACK = 1 } sensor_mode_t;
@@ -84,7 +87,7 @@ static lv_obj_t *make_line(lv_obj_t *parent, lv_point_t *pts,
 static lv_obj_t *make_dot(lv_obj_t *parent, lv_color_t color)
 {
     lv_obj_t *obj = lv_obj_create(parent);
-    lv_obj_set_size(obj, DOT_DIAM, DOT_DIAM);
+    lv_obj_set_size(obj, DOT_DIAM_BASE, DOT_DIAM_BASE);
     lv_obj_set_style_radius(obj, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(obj, color, 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
@@ -220,19 +223,33 @@ void radar_ui_update(const ld2450_frame_t *frame)
             continue;
         }
 
+        /* Dot size scales linearly with speed up to DOT_SPEED_MAX */
+        int spd = t->speed;
+        int diam;
+        if (spd < 0) {
+            int s = (-spd > DOT_SPEED_MAX) ? DOT_SPEED_MAX : -spd;
+            diam = DOT_DIAM_BASE + (DOT_DIAM_TOWARD - DOT_DIAM_BASE) * s / DOT_SPEED_MAX;
+        } else if (spd > 0) {
+            int s = (spd > DOT_SPEED_MAX) ? DOT_SPEED_MAX : spd;
+            diam = DOT_DIAM_BASE - (DOT_DIAM_BASE - DOT_DIAM_AWAY) * s / DOT_SPEED_MAX;
+        } else {
+            diam = DOT_DIAM_BASE;
+        }
+
         int sx = SENSOR_X + x_sign * (t->x / s_mm_per_px);
         int sy = origin_y + y_sign * (t->y / s_mm_per_px);
 
         if (sx >= 0 && sx < LCD_H_RES && sy >= 0 && sy < LCD_V_RES) {
-            lv_obj_set_pos(s_dot[i], sx - DOT_DIAM / 2, sy - DOT_DIAM / 2);
+            lv_obj_set_size(s_dot[i], diam, diam);
+            lv_obj_set_pos(s_dot[i], sx - diam / 2, sy - diam / 2);
             lv_obj_clear_flag(s_dot[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(s_dot[i], LV_OBJ_FLAG_HIDDEN);
         }
 
-        char buf[32];
-        snprintf(buf, sizeof(buf), "T%d X%+d Y%d V%+d",
-                 i + 1, t->x, t->y, t->speed);
-        lv_label_set_text(s_info[i], buf);
+        /* char buf[32]; */
+        /* snprintf(buf, sizeof(buf), "T%d X%+d Y%d V%+d", */
+        /*          i + 1, t->x, t->y, t->speed); */
+        /* lv_label_set_text(s_info[i], buf); */
     }
 }
