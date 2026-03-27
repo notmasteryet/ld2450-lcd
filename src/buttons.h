@@ -9,13 +9,14 @@
 #define SW_BACK_GPIO    27    /* Reed switch — active-LOW, internal pull-up      */
 
 typedef enum {
-    BTN_ID_MODE = 0,   /* BOOT/GPIO0  — toggle front/back sensor mode */
-    BTN_ID_POWER,      /* GPIO33      — toggle display + sensor on/off */
+    BTN_ID_MODE = 0,   /* BOOT/GPIO0  — toggle display scale */
+    BTN_ID_POWER,      /* GPIO33      — cycle brightness / long-press to sleep */
     BTN_ID_COUNT,
 } btn_id_t;
 
 typedef enum {
-    BTN_EVT_PRESS,     /* rising edge (button released, active-LOW) */
+    BTN_EVT_PRESS,       /* button pressed (after debounce) */
+    BTN_EVT_LONG_PRESS,  /* button held for 5 seconds       */
 } btn_evt_type_t;
 
 typedef struct {

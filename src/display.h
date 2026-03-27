@@ -14,9 +14,13 @@
 #define LCD_V_RES       240
 #define LCD_SPI_CLOCK_HZ (40 * 1000 * 1000)
 
-/* Initialise SPI bus, ST7789 panel and LVGL display driver.
+#define DISP_BRIGHTNESS_LOW  15
+#define DISP_BRIGHTNESS_MID  50
+#define DISP_BRIGHTNESS_HIGH 100
+
+/* Initialise SPI bus, ST7789 panel, LVGL display driver, and LEDC backlight.
    Must be called before any lv_* calls. */
 void display_init(void);
 
-/* Drive the backlight GPIO high or low */
-void display_backlight(bool on);
+/* Set backlight brightness 0–100 %. 0 = off, 100 = full. */
+void display_set_brightness(int percent);

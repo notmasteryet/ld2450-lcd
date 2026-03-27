@@ -10,17 +10,18 @@ static const char *TAG = "buttons";
 
 /* Both buttons are active-LOW (pressing pulls the pin to GND).
  * GPIO0 has an on-board pull-up on DevKit boards.
- * GPIO33 uses the internal pull-up (no external resistor needed on PCB,
- * though a 10k external is good practice for noise immunity). */
+ * GPIO33 uses the internal pull-up. */
 
-#define DEBOUNCE_MS  50
+#define DEBOUNCE_MS   50
+#define LONGPRESS_MS  5000
 
 static QueueHandle_t s_evt_queue;
 
 typedef struct {
-    btn_id_t     id;
-    gpio_num_t   gpio;
+    btn_id_t      id;
+    gpio_num_t    gpio;
     TimerHandle_t debounce_timer;
+    TimerHandle_t longpress_timer;  /* NULL if no long-press on this button */
 } btn_ctx_t;
 
 static btn_ctx_t s_buttons[BTN_ID_COUNT] = {
@@ -29,25 +30,42 @@ static btn_ctx_t s_buttons[BTN_ID_COUNT] = {
 };
 
 /* Called from the debounce timer (timer task context, not ISR).
-   Checks the pin level is still LOW before firing the event. */
+   Confirms the pin is still LOW before sending a PRESS event. */
 static void debounce_expired(TimerHandle_t timer)
 {
     btn_ctx_t *ctx = pvTimerGetTimerID(timer);
-
-    /* Confirm pin is still pressed (LOW) after debounce window */
     if (gpio_get_level(ctx->gpio) == 0) {
         btn_evt_t evt = { .id = ctx->id, .type = BTN_EVT_PRESS };
         xQueueSend(s_evt_queue, &evt, 0);
     }
 }
 
-/* ISR — fires on falling edge (button press) */
+/* Called from the long-press timer after LONGPRESS_MS with button still held */
+static void longpress_expired(TimerHandle_t timer)
+{
+    btn_ctx_t *ctx = pvTimerGetTimerID(timer);
+    btn_evt_t evt = { .id = ctx->id, .type = BTN_EVT_LONG_PRESS };
+    xQueueSend(s_evt_queue, &evt, 0);
+}
+
+/* ISR — fires on falling or rising edge depending on button config */
 static void IRAM_ATTR gpio_isr_handler(void *arg)
 {
     btn_ctx_t *ctx = (btn_ctx_t *)arg;
-    /* Reset and start the debounce one-shot timer from ISR */
     BaseType_t woken = pdFALSE;
-    xTimerResetFromISR(ctx->debounce_timer, &woken);
+
+    if (gpio_get_level(ctx->gpio) == 0) {
+        /* Falling edge — button pressed: start debounce and long-press timers */
+        xTimerResetFromISR(ctx->debounce_timer, &woken);
+        if (ctx->longpress_timer) {
+            xTimerResetFromISR(ctx->longpress_timer, &woken);
+        }
+    } else {
+        /* Rising edge — button released: cancel long-press if not yet fired */
+        if (ctx->longpress_timer) {
+            xTimerStopFromISR(ctx->longpress_timer, &woken);
+        }
+    }
     portYIELD_FROM_ISR(woken);
 }
 
@@ -65,26 +83,35 @@ void buttons_init(void)
     };
     gpio_config(&sw_cfg);
 
+    /* Long-press timer for power button only */
+    s_buttons[BTN_ID_POWER].longpress_timer = xTimerCreate(
+        "btn_lp",
+        pdMS_TO_TICKS(LONGPRESS_MS),
+        pdFALSE,   /* one-shot */
+        &s_buttons[BTN_ID_POWER],
+        longpress_expired
+    );
+
     gpio_install_isr_service(0);
 
     for (int i = 0; i < BTN_ID_COUNT; i++) {
         btn_ctx_t *ctx = &s_buttons[i];
 
-        /* GPIO0 already has an external pull-up on DevKit; still safe to
-         * enable the internal one on custom PCBs without an external resistor. */
+        /* Power button needs ANYEDGE to detect release for long-press cancel */
         gpio_config_t cfg = {
             .pin_bit_mask = 1ULL << ctx->gpio,
             .mode         = GPIO_MODE_INPUT,
             .pull_up_en   = GPIO_PULLUP_ENABLE,
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type    = GPIO_INTR_NEGEDGE,  /* falling edge = button press */
+            .intr_type    = ctx->longpress_timer ? GPIO_INTR_ANYEDGE
+                                                 : GPIO_INTR_NEGEDGE,
         };
         gpio_config(&cfg);
 
         ctx->debounce_timer = xTimerCreate(
             "btn_db",
             pdMS_TO_TICKS(DEBOUNCE_MS),
-            pdFALSE,        /* one-shot */
+            pdFALSE,   /* one-shot */
             ctx,
             debounce_expired
         );

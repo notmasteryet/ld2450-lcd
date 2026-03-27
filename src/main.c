@@ -13,9 +13,17 @@
 
 static const char *TAG = "main";
 
+static const int BRIGHTNESS_LEVELS[] = {
+    DISP_BRIGHTNESS_LOW,
+    DISP_BRIGHTNESS_MID,
+    DISP_BRIGHTNESS_HIGH,
+};
+#define BRIGHTNESS_COUNT 3
+static int s_brightness_idx = 2;   /* start at HIGH */
+
 static void enter_sleep(void)
 {
-    display_backlight(false);
+    display_set_brightness(0);
     power_sensor(false);
     gpio_hold_en((gpio_num_t)DISP_PIN_BL);       /* hold BL LOW through sleep */
     gpio_hold_en((gpio_num_t)PWR_SENSOR_GPIO);   /* hold GPIO32 LOW through sleep */
@@ -38,8 +46,12 @@ static void handle_button(const btn_evt_t *evt)
         radar_ui_toggle_scale();
         break;
     case BTN_ID_POWER:
-        /* Power button — sleep now; button press will wake via reset */
-        enter_sleep();
+        if (evt->type == BTN_EVT_LONG_PRESS) {
+            enter_sleep();
+        } else {
+            s_brightness_idx = (s_brightness_idx + 1) % BRIGHTNESS_COUNT;
+            display_set_brightness(BRIGHTNESS_LEVELS[s_brightness_idx]);
+        }
         break;
     default:
         break;

@@ -1,6 +1,7 @@
 #include "display.h"
 
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -15,6 +16,12 @@ static const char *TAG = "display";
 
 #define LVGL_DRAW_BUF_LINES  20
 #define LVGL_TICK_PERIOD_MS   1
+
+#define BL_LEDC_TIMER    LEDC_TIMER_0
+#define BL_LEDC_MODE     LEDC_LOW_SPEED_MODE
+#define BL_LEDC_CHANNEL  LEDC_CHANNEL_0
+#define BL_LEDC_DUTY_RES LEDC_TIMER_10_BIT   /* 0–1023 */
+#define BL_LEDC_FREQ_HZ  5000
 
 static lv_disp_drv_t    s_disp_drv;
 static lv_disp_draw_buf_t s_draw_buf;
@@ -88,13 +95,27 @@ void display_init(void)
     esp_lcd_panel_set_gap(s_panel, 0, 0);
     esp_lcd_panel_disp_on_off(s_panel, true);
 
-    /* ---- Backlight ---- */
-    gpio_config_t bl_cfg = {
-        .pin_bit_mask = 1ULL << DISP_PIN_BL,
-        .mode         = GPIO_MODE_OUTPUT,
+    /* ---- Backlight via LEDC PWM ---- */
+    const ledc_timer_config_t bl_timer = {
+        .speed_mode      = BL_LEDC_MODE,
+        .timer_num       = BL_LEDC_TIMER,
+        .duty_resolution = BL_LEDC_DUTY_RES,
+        .freq_hz         = BL_LEDC_FREQ_HZ,
+        .clk_cfg         = LEDC_AUTO_CLK,
     };
-    gpio_config(&bl_cfg);
-    display_backlight(true);
+    ESP_ERROR_CHECK(ledc_timer_config(&bl_timer));
+
+    const ledc_channel_config_t bl_channel = {
+        .speed_mode = BL_LEDC_MODE,
+        .channel    = BL_LEDC_CHANNEL,
+        .timer_sel  = BL_LEDC_TIMER,
+        .intr_type  = LEDC_INTR_DISABLE,
+        .gpio_num   = DISP_PIN_BL,
+        .duty       = 0,
+        .hpoint     = 0,
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&bl_channel));
+    display_set_brightness(DISP_BRIGHTNESS_HIGH);
 
     /* ---- LVGL init ---- */
     lv_init();
@@ -122,7 +143,11 @@ void display_init(void)
     ESP_LOGI(TAG, "ST7789 %dx%d ready", LCD_H_RES, LCD_V_RES);
 }
 
-void display_backlight(bool on)
+void display_set_brightness(int percent)
 {
-    gpio_set_level(DISP_PIN_BL, on ? 1 : 0);
+    if (percent < 0)   percent = 0;
+    if (percent > 100) percent = 100;
+    uint32_t duty = ((1 << BL_LEDC_DUTY_RES) - 1) * percent / 100;
+    ledc_set_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL, duty);
+    ledc_update_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL);
 }
